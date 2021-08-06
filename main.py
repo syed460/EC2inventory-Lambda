@@ -4,22 +4,24 @@ import json, csv
 import boto3
 from pprint import pprint
 from datetime import datetime
-import subprocess
-import os.path
+import subprocess, os
+
   
 #def lambda_handler(event, context):
-print("-----------Script Starts-----------")
+print("---------------Script Starts-------------")
 print("")
-#-------------------filname function
-Bucket_region = "eu-west-1"
-Bucket_Name = "nonprodpatchinglogs"
+#-------------------Environment variables-----------
+Bucket_region = os.getenv("Bucket_region")
+Bucket_Name = os.getenv("Bucket_Name")
+filename= os.getenv("filename")
+#----------------------------------------
 
 #defining file name
 def date_on_filename(filename, file_extension):  
 	date = str(datetime.now().date())
 	return filename + "-" + date + "." + file_extension
 
-report_filename = date_on_filename("ec2_inventory", "csv")
+report_filename = date_on_filename(filename, "csv")
 print(f"output file name: {report_filename}")
 
 #file path
@@ -27,17 +29,20 @@ filepath= "/tmp/" + report_filename
 print(f"Output File Patch {filepath}")
 print("")
 
-#link the services
+#Collecting Account Number
 sts_cli=boto3.client(service_name='sts', region_name="us-east-1")
 responce_1=sts_cli.get_caller_identity()
 account_number=responce_1.get("Account")
 
 #--------------Manually update the dic.keys() to header_list if mismatch
 
-header_list=['region', 'OwnerId', 'IAMRole', 'image_id', 'Image_Name', 'InstanceId', 'InstanceType', 'KeyPair', 'LaunchTime', 'DetailedMonitoring', 'AZ', 'state', 'SubnetId', 'VpcId', 'DeviceNames', 'AttachedVolumeIds', 'EnaSupport', 'PrivateIpAddress', 'PublicIpAddress', 'RootDeviceType', 'SGId', 'SGName', 'SourceDestCheck']
-print(header_list)
+header_list=['region', 'OwnerId', 'IAMRole', 'image_id', 'Image_Name', 'InstanceId', 'InstanceType', 'KeyPair', 'LaunchTime', \
+    'DetailedMonitoring', 'AZ', 'state', 'SubnetId', 'VpcId', 'DeviceNames', 'AttachedVolumeIds', 'EnaSupport', 'PrivateIpAddress', \
+        'PublicIpAddress', 'RootDeviceType', 'SGId', 'SGName', 'SourceDestCheck']
+print(f"Header for CSV file = {header_list}")
+print(" ")
 # to add 50 Tag headers
-for v in range(1,50):
+for v in range(1,51):
     header_list.append(f'Tag{v}')
 
 #-----------collect all region list into Regions
@@ -50,7 +55,7 @@ Regions=[]
 for each in responce['Regions']:
     #print(each['RegionName'])
     Regions.append(each['RegionName'])    
-print(f"collected the {len(Regions)} regions")
+print(f"Total {len(Regions)} regions")
 print("")
 
 #----------comment this one once testing done
@@ -63,7 +68,7 @@ with open(filepath,'w') as csv_file:
 #with open("outpu.csv",'w') as csv_file:
     Writer=csv.writer(csv_file)
     Writer.writerow(header_list)
-    #Main_dic={}  
+    
 
     #revert the changes here
     print("Now going through each regions to check ec2 details")
@@ -275,26 +280,30 @@ with open(filepath,'w') as csv_file:
                             print("-----")                 
                             print(dic.keys()) 
                             print("-----")                 
-                            #print(dic.values())
+                            print(dic.values())
                             
                             Writer.writerow(dic.values())
-                            print(f"Added this {x} instance dtails to {report_filename}")
-                            print("------")
-                            print('')
+                            print(f"\n------EC2 {x} details been taken\n")
+                            
+                            
                             x=x+1
 
 
 
 #to check the what are the files exist under folder
-lscommand = subprocess.run("ls /tmp/ec2_inventory*", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-print(lscommand.stdout.decode('utf-8'))
+#lscommand = subprocess.run(f"ls {filepath}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+lscommand = subprocess.run(f"ls {filepath}", shell=True, capture_output=True, text=True)
+print(f"Output file Location:\n{lscommand.stdout}")
+
+
 
 #transfer the file to s3
+print(f"moving the file to S3 Bucket: {Bucket_Name}")
 s3_cli=boto3.client(service_name='s3', region_name=Bucket_region)
-s3_cli.upload_file(filepath, Bucket_Name, report_filename)
+#s3_cli.upload_file(filepath, Bucket_Name, report_filename)
 
 #remove the file from container
-removefile=subprocess.run("rm -rfv /tmp/ec2_inventory*", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-print(removefile.stdout.decode('utf-8'))
+#removefile=subprocess.run(f"rm -rfv {filepath}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#print(f"Removed the output file from /tmp/ dir\n{removefile.stdout.decode('utf-8')}")
 print(" ")
-print("----------Script Ends-----------")
+print("-----------------Script Ends--------------------")
